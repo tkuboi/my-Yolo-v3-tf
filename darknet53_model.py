@@ -101,6 +101,8 @@ def darknet53(inputs, data_format):
     return inputs
 
 
+img = Image.open(filename)
+img_resized = img.resize(size=(256, 256))
 
 # tf Graph Input
 inputs = tf.placeholder(tf.float32, [None, 256, 256, 3])
