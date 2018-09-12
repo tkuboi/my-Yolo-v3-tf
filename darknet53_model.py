@@ -23,8 +23,9 @@ DEFAULT_VERSION = 2
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
-BATCH_SIZE = 10
-LIMIT = 1000
+LEARNING_RATE = 1e-4 
+BATCH_SIZE = 100
+LIMIT = 10000
 IMAGE_SIZE = 256
 NUM_EPOCH = 10
 IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
@@ -156,7 +157,7 @@ y_hat = darknet53(inputs, 'channels_first')
 
 cost = tf.reduce_mean(
     tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat))
-optimizer = tf.train.AdamOptimizer(1e-4).minimize(cost)
+optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
@@ -170,10 +171,9 @@ total_batch = len(images_labels) // BATCH_SIZE
 with tf.Session() as sess:
      sess.run(tf.global_variables_initializer())
      for e in range(NUM_EPOCH):
+         print("epoch=",e)
          for i in range(total_batch):
              batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
              images,labels = get_images_labels(batch_x_y)
-             print(len(images),len(labels))
-             print(images[0].shape) 
              _, loss = sess.run([optimizer, cost], feed_dict={inputs: images, y: labels})
-             print(loss)
+             print("loss=",loss)
