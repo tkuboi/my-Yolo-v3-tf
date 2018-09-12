@@ -13,7 +13,8 @@ import re
 import glob
 import numpy as np
 import tensorflow as tf
-from PIL import Image, ImageDraw
+import cv2
+#from PIL import Image, ImageDraw
 from random import shuffle
 
 _BATCH_NORM_DECAY = 0.997
@@ -22,10 +23,11 @@ DEFAULT_VERSION = 2
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
-BATCH_SIZE = 100
+BATCH_SIZE = 10
 LIMIT = 1000
 IMAGE_SIZE = 256
 NUM_EPOCH = 10
+IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
 
 def batch_norm(inputs, training, data_format):
     return tf.layers.batch_normalization(
@@ -113,36 +115,41 @@ def darknet53(inputs, data_format):
     inputs = tf.layers.average_pooling2d(inputs, shape[2:], [1,1],
                                          padding='valid',
                                          data_format=data_format)
-    inputs = tf.layers.dense(inputs, 1000, 'softmax')
+    shape=inputs.get_shape().as_list()
+    inputs = tf.reshape(inputs, [-1, shape[1] * shape[2] * shape[3]])
+    inputs = tf.layers.dense(inputs=inputs, units=1000)
     #inputs = tf.nn.softmax(inputs, axis=None)
     return inputs
 
 def one_hot(label, num_classes):
     vec = np.zeros(num_classes)
-    digit = re.find(r'\d+', label)
-    c = int(digit) - BASE 
-    vec[c]=1
+    #digit = re.find(r'\d+', label)
+    #c = int(digit) - BASE 
+    vec[label]=1
     return vec
 
 def get_image_list(directory):
     images = []
     classes = []
-    for subdir in next(os.walk(direcotry))[1]:
-        images += glob.glob(directory + '/' + subdir + '/*.jpeg')
-        classes += [subdir] * len(images)
+    for i,subdir in enumerate(next(os.walk(directory))[1]):
+        if i >= 1000:
+            break 
+        images += glob.glob(directory + '/' + subdir + '/*.JPEG')
+        classes += [i] * len(images)
     return zip(images, classes)
 
 def get_images_labels(images_labels):
     x = []
     y = []
-    for image,label in image_labels:
-        img = Image.open(filename)
-        x.append(img.resize(size=(IMAGE_SIZE, IMAGE_SIZE)))
+    for image,label in images_labels:
+        img = cv2.imread(image)
+        pix = cv2.resize(img, (IMAGE_SIZE, IMAGE_SIZE))
+        x.append(pix)
         y.append(one_hot(label, 1000))
-    return np.array(x), np.array(y)
+    return x, y
 
 # tf Graph Input
-inputs = tf.placeholder(tf.float32, [None, IMAGE_SIZE, IMAGE_SIZE, 3])
+inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
 y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
 
 y_hat = darknet53(inputs, 'channels_first') 
@@ -153,16 +160,20 @@ optimizer = tf.train.AdamOptimizer(1e-4).minimize(cost)
 correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-images_labels = get_image_list(directory)
-images_labels = shuffle(images_labels)
+images_labels = get_image_list(IMAGE_DIRECTORY)
+shuffle(images_labels)
+print(len(images_labels))
 images_labels, rest = images_labels[:LIMIT], images_labels[LIMIT:]
 
-total_batch = len(image_labels) / BATCH_SIZE
+total_batch = len(images_labels) // BATCH_SIZE
 
 with tf.Session() as sess:
      sess.run(tf.global_variables_initializer())
      for e in range(NUM_EPOCH):
          for i in range(total_batch):
-             batch_x_y = image_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
-             images,labels = get_images_labels(batch_x_y) 
-             _, loss = sess.run([optimizer, cost], feed_dict={inputs: images, y: labels})             print loss 
+             batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
+             images,labels = get_images_labels(batch_x_y)
+             print(len(images),len(labels))
+             print(images[0].shape) 
+             _, loss = sess.run([optimizer, cost], feed_dict={inputs: images, y: labels})
+             print(loss)
