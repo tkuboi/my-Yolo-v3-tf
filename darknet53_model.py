@@ -29,6 +29,7 @@ LIMIT = 10000
 IMAGE_SIZE = 256
 NUM_EPOCH = 10
 IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
+EXPORT_DIR = "."
 
 def batch_norm(inputs, training, data_format):
     return tf.layers.batch_normalization(
@@ -149,31 +150,45 @@ def get_images_labels(images_labels):
         y.append(one_hot(label, 1000))
     return x, y
 
-# tf Graph Input
-inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
-y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
+def main():
+    # tf Graph Input
+    inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
+    y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
 
-y_hat = darknet53(inputs, 'channels_first') 
+    y_hat = darknet53(inputs, 'channels_first') 
 
-cost = tf.reduce_mean(
-    tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat))
-optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
-correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    cost = tf.reduce_mean(
+        tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat))
+    optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
+    correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-images_labels = get_image_list(IMAGE_DIRECTORY)
-shuffle(images_labels)
-print(len(images_labels))
-images_labels, rest = images_labels[:LIMIT], images_labels[LIMIT:]
+    images_labels = get_image_list(IMAGE_DIRECTORY)
+    shuffle(images_labels)
+    print(len(images_labels))
+    images_labels, rest = images_labels[:LIMIT], images_labels[LIMIT:]
 
-total_batch = len(images_labels) // BATCH_SIZE
+    total_batch = len(images_labels) // BATCH_SIZE
 
-with tf.Session() as sess:
-     sess.run(tf.global_variables_initializer())
-     for e in range(NUM_EPOCH):
-         print("epoch=",e)
-         for i in range(total_batch):
-             batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
-             images,labels = get_images_labels(batch_x_y)
-             _, loss = sess.run([optimizer, cost], feed_dict={inputs: images, y: labels})
-             print("loss=",loss)
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for e in range(NUM_EPOCH):
+            print("epoch=",e)
+            losses = []
+            accs = []
+            for i in range(total_batch):
+                batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
+                images,labels = get_images_labels(batch_x_y)
+                _, loss, acc = sess.run([optimizer, cost, accuracy],
+                    feed_dict={inputs: images, y: labels})
+                losses.append(loss)
+                accs.append(acc)
+                print("loss=",loss,"accuracy=",acc)
+            print("loss=",sum(losses)/len(losses),"accuracy=",sum(accs)/len(accs))
+        tf.saved_model.simple_save(sess,
+            EXPORT_DIR,
+            inputs={"inputs": images, "y": labels},
+            outputs={"logits": y_hat})
+
+if __name__ == '__main__':
+    main()
