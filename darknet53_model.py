@@ -29,6 +29,7 @@ LEARNING_RATE = 1e-4
 BATCH_SIZE = 100
 LIMIT = 100000
 IMAGE_SIZE = 256
+OFFSET = 50 
 NUM_EPOCH = 10
 IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
 EXPORT_DIR = "model"
@@ -147,11 +148,17 @@ def get_images_labels(images_labels):
     x = []
     y = []
     for image,label in images_labels:
-        img = cv2.imread(image)
-        pix = cv2.resize(img, (IMAGE_SIZE, IMAGE_SIZE))
+        #img = cv2.imread(image)
+        #pix = cv2.resize(img, (IMAGE_SIZE, IMAGE_SIZE))
+        pix = load_image(image)
         x.append(pix)
         y.append(one_hot(label, 1000))
     return x, y
+
+def load_image(filename):
+    img = cv2.imread(filename)
+    img = cv2.resize(img, (IMAGE_SIZE + OFFSET, IMAGE_SIZE + OFFSET))
+    return img[OFFSET:OFFSET+IMAGE_SIZE, OFFSET:OFFSET+IMAGE_SIZE] 
 
 def main():
     if len(sys.argv) > 1:
