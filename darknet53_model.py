@@ -11,6 +11,7 @@ from __future__ import print_function
 import os
 import re 
 import glob
+import time
 import numpy as np
 import tensorflow as tf
 import cv2
@@ -24,12 +25,12 @@ DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 LEARNING_RATE = 1e-4 
-BATCH_SIZE = 100
-LIMIT = 10000
+BATCH_SIZE = 10
+LIMIT = 100000
 IMAGE_SIZE = 256
 NUM_EPOCH = 10
 IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
-EXPORT_DIR = "."
+EXPORT_DIR = "model"
 
 def batch_norm(inputs, training, data_format):
     return tf.layers.batch_normalization(
@@ -184,11 +185,16 @@ def main():
                 losses.append(loss)
                 accs.append(acc)
                 print("loss=",loss,"accuracy=",acc)
-            print("loss=",sum(losses)/len(losses),"accuracy=",sum(accs)/len(accs))
+            print("Average loss=",sum(losses)/len(losses),"Average accuracy=",sum(accs)/len(accs))
+
+        # Save model state
+        print('\nSaving...')
+        path = os.path.join(EXPORT_DIR, str(int(time.time())))	
         tf.saved_model.simple_save(sess,
-            EXPORT_DIR,
-            inputs={"inputs": images, "y": labels},
+            path,
+            inputs={"inputs": inputs, "y": y},
             outputs={"logits": y_hat})
+        print('Saved at ', path)
 
 if __name__ == '__main__':
     main()
