@@ -157,10 +157,27 @@ def get_images_labels(images_labels):
 
 def load_image(filename):
     img = cv2.imread(filename)
+    image_stats.append(img.shape)
     img = cv2.resize(img, (IMAGE_SIZE + OFFSET, IMAGE_SIZE + OFFSET))
     return img[OFFSET:OFFSET+IMAGE_SIZE, OFFSET:OFFSET+IMAGE_SIZE] 
 
+def get_image_stats(stats):
+    min_w = min_h = min_c = 1000
+    max_w = max_h = max_c = 0
+    for w,h,c in stats:
+        if w < min_w:
+            min_w = w
+        if w > max_w:
+            max_w = w
+        if h < min_h:
+            min_h = h
+        if h > max_h:
+            max_h = h
+    return min_w,min_h,max_w,max_h
+
 def main():
+    global image_stats = []
+
     if len(sys.argv) > 1:
         saved_model_dir = sys.argv[1]
         print("saved_model_dir=", saved_model_dir)
@@ -193,6 +210,7 @@ def main():
             print("epoch=",e)
             losses = []
             accs = []
+            image_stats = []
             message = ""
             for i in range(total_batch):
                 batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
@@ -223,6 +241,8 @@ def main():
             inputs={"inputs": inputs, "y": y},
             outputs={"logits": y_hat})
         print('Saved at ', path)
+        stats = get_image_stats(image_stats)
+        print(stats)
 
 if __name__ == '__main__':
     main()
