@@ -201,7 +201,7 @@ def main():
                 if i * 100 % total_batch == 0:
                     sys.stdout.write("=")
                 sys.stdout.write(">")
-                message = "loss=%s, accuracy=%s" % (loss,acc)
+                message = "%s/%s: loss=%s, accuracy=%s" % (i, total_batch, loss,acc)
                 sys.stdout.write(message)
                 sys.stdout.flush()
 
