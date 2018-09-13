@@ -154,6 +154,10 @@ def get_images_labels(images_labels):
     return x, y
 
 def main():
+    if len(sys.argv) > 1:
+        saved_model_dir = sys.argv[1]
+        print("saved_model_dir=", saved_model_dir)
+
     # tf Graph Input
     inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
     y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
@@ -174,7 +178,10 @@ def main():
     total_batch = len(images_labels) // BATCH_SIZE
 
     with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
+        if saved_model_dir:
+            tf.saved_model.loader.load(sess, [tag_constants.TRAINING], saved_model_dir)
+        else:
+            sess.run(tf.global_variables_initializer())
         for e in range(NUM_EPOCH):
             print("epoch=",e)
             losses = []
@@ -191,7 +198,8 @@ def main():
                 if len(message) > 0:
                     sys.stdout.write("\b" * (len(message) + 1))
                     sys.stdout.flush()
-                sys.stdout.write("=")
+                if i * 100 % total_batch == 0:
+                    sys.stdout.write("=")
                 sys.stdout.write(">")
                 message = "loss=%s, accuracy=%s" % (loss,acc)
                 sys.stdout.write(message)
