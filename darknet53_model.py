@@ -9,6 +9,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys 
 import re 
 import glob
 import time
@@ -25,7 +26,7 @@ DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 LEARNING_RATE = 1e-4 
-BATCH_SIZE = 10
+BATCH_SIZE = 100
 LIMIT = 100000
 IMAGE_SIZE = 256
 NUM_EPOCH = 10
@@ -112,6 +113,7 @@ def darknet53(inputs, data_format):
     inputs = inputs / 255
 
     inputs = darknet53_base(inputs, data_format)
+    features = inputs
     #shape = tf.shape(inputs)
     shape=inputs.get_shape().as_list()
     #inputs = tf.layers.average_pooling2d(inputs, [8,1], [1,1],
@@ -122,7 +124,7 @@ def darknet53(inputs, data_format):
     inputs = tf.reshape(inputs, [-1, shape[1] * shape[2] * shape[3]])
     inputs = tf.layers.dense(inputs=inputs, units=1000)
     #inputs = tf.nn.softmax(inputs, axis=None)
-    return inputs
+    return inputs, features
 
 def one_hot(label, num_classes):
     vec = np.zeros(num_classes)
@@ -156,7 +158,7 @@ def main():
     inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
     y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
 
-    y_hat = darknet53(inputs, 'channels_first') 
+    y_hat, features = darknet53(inputs, 'channels_first') 
 
     cost = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat))
@@ -177,6 +179,7 @@ def main():
             print("epoch=",e)
             losses = []
             accs = []
+            message = ""
             for i in range(total_batch):
                 batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
                 images,labels = get_images_labels(batch_x_y)
@@ -184,7 +187,17 @@ def main():
                     feed_dict={inputs: images, y: labels})
                 losses.append(loss)
                 accs.append(acc)
-                print("loss=",loss,"accuracy=",acc)
+                #print("loss=",loss,"accuracy=",acc)
+                if len(message) > 0:
+                    sys.stdout.write("\b" * (len(message) + 1))
+                    sys.stdout.flush()
+                sys.stdout.write("=")
+                sys.stdout.write(">")
+                message = "loss=%s, accuracy=%s" % (loss,acc)
+                sys.stdout.write(message)
+                sys.stdout.flush()
+
+            sys.stdout.write("\n")
             print("Average loss=",sum(losses)/len(losses),"Average accuracy=",sum(accs)/len(accs))
 
         # Save model state
