@@ -27,10 +27,10 @@ CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 LEARNING_RATE = 1e-4 
 BATCH_SIZE = 100
-LIMIT = 100000
+LIMIT = 1000
 IMAGE_SIZE = 256
 OFFSET = 50 
-NUM_EPOCH = 10
+NUM_EPOCH = 1
 IMAGE_DIRECTORY = "../ILSVRC2012_img_train"
 EXPORT_DIR = "model"
 
@@ -125,7 +125,7 @@ def darknet53(inputs, data_format):
     inputs = tf.reshape(inputs, [-1, shape[1] * shape[2] * shape[3]])
     inputs = tf.layers.dense(inputs=inputs, units=1000)
     #inputs = tf.nn.softmax(inputs, axis=None)
-    return inputs, features
+    return tf.identity(inputs, name='y_hat'), tf.identity(features, name='features')
 
 def one_hot(label, num_classes):
     vec = np.zeros(num_classes)
@@ -175,24 +175,32 @@ def get_image_stats(stats):
             max_h = h
     return min_w,min_h,max_w,max_h
 
-def main():
-    global image_stats = []
+def build_graph_from_scratch():
+    graph = tf.Graph()
+    with graph.as_default():
+        # tf Graph Input
+        inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3), name='inputs')
+        y = tf.placeholder(tf.float32, [None, 1000], name='y') # 0-9 digits recognition => 10 classes
 
+        y_hat, features = darknet53(inputs, 'channels_first') 
+
+        cost = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat), name='cost')
+        optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost, name='optimizer')
+        correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1), name='correct_prediction')
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
+    return graph, inputs, y, y_hat, cost, optimizer, accuracy
+
+def main():
+    global image_stats
+
+    saved_model_dir = None
     if len(sys.argv) > 1:
         saved_model_dir = sys.argv[1]
         print("saved_model_dir=", saved_model_dir)
-
-    # tf Graph Input
-    inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3))
-    y = tf.placeholder(tf.float32, [None, 1000]) # 0-9 digits recognition => 10 classes
-
-    y_hat, features = darknet53(inputs, 'channels_first') 
-
-    cost = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat))
-    optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
-    correct_prediction = tf.equal(tf.argmax(y_hat, 1), tf.argmax(y, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        graph = tf.Graph()
+    else:
+        graph, inputs, y, y_hat, cost, optimizer, accuracy = build_graph_from_scratch()
 
     images_labels = get_image_list(IMAGE_DIRECTORY)
     shuffle(images_labels)
@@ -201,48 +209,61 @@ def main():
 
     total_batch = len(images_labels) // BATCH_SIZE
 
-    with tf.Session() as sess:
-        if saved_model_dir:
-            tf.saved_model.loader.load(sess, [tag_constants.TRAINING], saved_model_dir)
-        else:
-            sess.run(tf.global_variables_initializer())
-        for e in range(NUM_EPOCH):
-            print("epoch=",e)
-            losses = []
-            accs = []
-            image_stats = []
-            message = ""
-            for i in range(total_batch):
-                batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
-                images,labels = get_images_labels(batch_x_y)
-                _, loss, acc = sess.run([optimizer, cost, accuracy],
-                    feed_dict={inputs: images, y: labels})
-                losses.append(loss)
-                accs.append(acc)
-                #print("loss=",loss,"accuracy=",acc)
-                if len(message) > 0:
-                    sys.stdout.write("\b" * (len(message) + 1))
+    with graph.as_default():
+        with tf.Session(graph=graph) as sess:
+            if saved_model_dir:
+                tf.saved_model.loader.load(sess, [tf.saved_model.tag_constants.SERVING], saved_model_dir)
+                print(graph.get_all_collection_keys())
+                print(graph.get_collection('train_op'))
+                print(graph.get_collection('variables'))
+                print(graph.get_collection('trainable_variables'))
+                inputs = graph.get_tensor_by_name('inputs:0')
+                y = graph.get_tensor_by_name('y:0')
+                y_hat = graph.get_tensor_by_name('y_hat:0')
+                optimizer = graph.get_operation_by_name('optimizer')
+                cost = graph.get_tensor_by_name('cost:0')
+                accuracy = graph.get_tensor_by_name('accuracy:0')
+                correct_prediction = graph.get_tensor_by_name('correct_prediction:0')
+            else:
+                sess.run(tf.global_variables_initializer())
+
+            for e in range(NUM_EPOCH):
+                print("epoch=",e)
+                losses = []
+                accs = []
+                image_stats = []
+                message = ""
+                for i in range(total_batch):
+                    batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
+                    images,labels = get_images_labels(batch_x_y)
+                    _, loss, acc = sess.run([optimizer, cost, accuracy],
+                        feed_dict={inputs: images, y: labels})
+                    losses.append(loss)
+                    accs.append(acc)
+                    #print("loss=",loss,"accuracy=",acc)
+                    if len(message) > 0:
+                        sys.stdout.write("\b" * (len(message) + 1))
+                        sys.stdout.flush()
+                    if i * 100 % total_batch == 0:
+                        sys.stdout.write("=")
+                    sys.stdout.write(">")
+                    message = "%s/%s: loss=%s, accuracy=%s" % (i, total_batch, loss,acc)
+                    sys.stdout.write(message)
                     sys.stdout.flush()
-                if i * 100 % total_batch == 0:
-                    sys.stdout.write("=")
-                sys.stdout.write(">")
-                message = "%s/%s: loss=%s, accuracy=%s" % (i, total_batch, loss,acc)
-                sys.stdout.write(message)
-                sys.stdout.flush()
 
-            sys.stdout.write("\n")
-            print("Average loss=",sum(losses)/len(losses),"Average accuracy=",sum(accs)/len(accs))
+                sys.stdout.write("\n")
+                print("Average loss=",sum(losses)/len(losses),"Average accuracy=",sum(accs)/len(accs))
 
-        # Save model state
-        print('\nSaving...')
-        path = os.path.join(EXPORT_DIR, str(int(time.time())))	
-        tf.saved_model.simple_save(sess,
-            path,
-            inputs={"inputs": inputs, "y": y},
-            outputs={"logits": y_hat})
-        print('Saved at ', path)
-        stats = get_image_stats(image_stats)
-        print(stats)
+            # Save model state
+            print('\nSaving...')
+            path = os.path.join(EXPORT_DIR, str(int(time.time())))	
+            tf.saved_model.simple_save(sess,
+                path,
+                inputs={"inputs": inputs, "y": y},
+                outputs={"logits": y_hat})
+            print('Saved at ', path)
+            stats = get_image_stats(image_stats)
+            print(stats)
 
 if __name__ == '__main__':
     main()
