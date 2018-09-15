@@ -244,10 +244,10 @@ def main():
                     if len(message) > 0:
                         sys.stdout.write("\b" * (len(message) + 1))
                         sys.stdout.flush()
-                    if i * 100 % total_batch == 0:
+                    if ((i+1) * 100) % total_batch == 0:
                         sys.stdout.write("=")
                     sys.stdout.write(">")
-                    message = "%s/%s: loss=%s, accuracy=%s" % (i, total_batch, loss,acc)
+                    message = "%s/%s: loss=%s, accuracy=%s" % (i+1, total_batch, loss,acc)
                     sys.stdout.write(message)
                     sys.stdout.flush()
 
