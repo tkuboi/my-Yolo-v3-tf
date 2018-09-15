@@ -27,7 +27,7 @@ CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 LEARNING_RATE = 1e-4 
 BATCH_SIZE = 100
-LIMIT = 1000
+LIMIT = -1
 IMAGE_SIZE = 256
 OFFSET = 50 
 NUM_EPOCH = 1
@@ -157,9 +157,22 @@ def get_images_labels(images_labels):
 
 def load_image(filename):
     img = cv2.imread(filename)
-    image_stats.append(img.shape)
-    img = cv2.resize(img, (IMAGE_SIZE + OFFSET, IMAGE_SIZE + OFFSET))
-    return img[OFFSET:OFFSET+IMAGE_SIZE, OFFSET:OFFSET+IMAGE_SIZE] 
+    h,w,c = img.shape
+    if w < IMAGE_SIZE or h < IMAGE_SIZE:
+        if w > h:
+            new_h = IMAGE_SIZE
+            new_w = int(new_h * (w/h))
+        else:
+            new_w = IMAGE_SIZE
+            new_h = int(new_w * (h/w))
+
+        img = cv2.resize(img, (new_w, new_h))
+        w = new_w
+        h = new_h
+
+    w_offset = (w - IMAGE_SIZE) // 2
+    h_offset = (h - IMAGE_SIZE) // 2
+    return img[h_offset:h_offset+IMAGE_SIZE, w_offset:w_offset+IMAGE_SIZE] 
 
 def get_image_stats(stats):
     min_w = min_h = min_c = 1000
@@ -191,8 +204,12 @@ def build_graph_from_scratch():
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32), name='accuracy')
     return graph, inputs, y, y_hat, cost, optimizer, accuracy
 
+def save_metrics(path, accum):
+    with open(path, 'w') as f:
+        for loss,acc in accum:
+            f.write("%s\t%s\n" % (loss, acc))
+
 def main():
-    global image_stats
 
     saved_model_dir = None
     if len(sys.argv) > 1:
@@ -213,10 +230,6 @@ def main():
         with tf.Session(graph=graph) as sess:
             if saved_model_dir:
                 tf.saved_model.loader.load(sess, [tf.saved_model.tag_constants.SERVING], saved_model_dir)
-                print(graph.get_all_collection_keys())
-                print(graph.get_collection('train_op'))
-                print(graph.get_collection('variables'))
-                print(graph.get_collection('trainable_variables'))
                 inputs = graph.get_tensor_by_name('inputs:0')
                 y = graph.get_tensor_by_name('y:0')
                 y_hat = graph.get_tensor_by_name('y_hat:0')
@@ -227,11 +240,11 @@ def main():
             else:
                 sess.run(tf.global_variables_initializer())
 
+            metrics_accum = []
             for e in range(NUM_EPOCH):
                 print("epoch=",e)
                 losses = []
                 accs = []
-                image_stats = []
                 message = ""
                 for i in range(total_batch):
                     batch_x_y = images_labels[i*BATCH_SIZE:i*BATCH_SIZE+BATCH_SIZE]
@@ -244,7 +257,7 @@ def main():
                     if len(message) > 0:
                         sys.stdout.write("\b" * (len(message) + 1))
                         sys.stdout.flush()
-                    if ((i+1) * 100) % total_batch == 0:
+                    if ((i+1) / total_batch * 100) % 10 == 0:
                         sys.stdout.write("=")
                     sys.stdout.write(">")
                     message = "%s/%s: loss=%s, accuracy=%s" % (i+1, total_batch, loss,acc)
@@ -252,18 +265,22 @@ def main():
                     sys.stdout.flush()
 
                 sys.stdout.write("\n")
-                print("Average loss=",sum(losses)/len(losses),"Average accuracy=",sum(accs)/len(accs))
+                avg_loss = sum(losses)/len(losses)
+                avg_acc = sum(accs)/len(accs)
+                metrics_accum.append((avg_loss, avg_acc))
+                print("Average loss=", avg_loss, "Average accuracy=", avg_acc)
+
+            print('\nSaving metrics...')
+            save_metrics('metrics_%s.tsv' % (str(int(time.time()))), metrics_accum)
 
             # Save model state
-            print('\nSaving...')
+            print('\nSaving model...')
             path = os.path.join(EXPORT_DIR, str(int(time.time())))	
             tf.saved_model.simple_save(sess,
                 path,
                 inputs={"inputs": inputs, "y": y},
                 outputs={"logits": y_hat})
             print('Saved at ', path)
-            stats = get_image_stats(image_stats)
-            print(stats)
 
 if __name__ == '__main__':
     main()
