@@ -170,6 +170,18 @@ def load_image(filename):
         w = new_w
         h = new_h
 
+    elif w > IMAGE_SIZE * 1.5 or h > IMAGE_SIZE * 1.5:
+        if w > h:
+            new_h = int(IMAGE_SIZE * 1.5)
+            new_w = int(new_h * (w/h))
+        else:
+            new_w = int(IMAGE_SIZE * 1.5) 
+            new_h = int(new_w * (h/w))
+
+        img = cv2.resize(img, (new_w, new_h))
+        w = new_w
+        h = new_h
+
     w_offset = (w - IMAGE_SIZE) // 2
     h_offset = (h - IMAGE_SIZE) // 2
     return img[h_offset:h_offset+IMAGE_SIZE, w_offset:w_offset+IMAGE_SIZE] 
