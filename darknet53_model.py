@@ -93,17 +93,19 @@ def darknet53_base(inputs, data_format):
     for i in range(8):
         inputs = _darknet53_block(inputs, 128, 1, data_format)
 
+    upsample1 = inputs
     inputs = conv2d_fixed_padding(inputs, 512, 3, data_format, strides=2)
 
     for i in range(8):
         inputs = _darknet53_block(inputs, 256, 1, data_format)
 
+    upsample2 = inputs
     inputs = conv2d_fixed_padding(inputs, 1024, 3, data_format, strides=2)
 
     for i in range(4):
         inputs = _darknet53_block(inputs, 512, 1, data_format)
 
-    return inputs
+    return inputs, upsample1, upsample2
 
 def darknet53(inputs, data_format):
     # transpose the inputs to NCHW
@@ -113,7 +115,7 @@ def darknet53(inputs, data_format):
     # normalize values to range [0..1]
     inputs = inputs / 255
 
-    inputs = darknet53_base(inputs, data_format)
+    inputs, upsample1, upsample2 = darknet53_base(inputs, data_format)
     features = inputs
     #shape = tf.shape(inputs)
     shape=inputs.get_shape().as_list()
@@ -125,7 +127,7 @@ def darknet53(inputs, data_format):
     inputs = tf.reshape(inputs, [-1, shape[1] * shape[2] * shape[3]])
     inputs = tf.layers.dense(inputs=inputs, units=1000)
     #inputs = tf.nn.softmax(inputs, axis=None)
-    return tf.identity(inputs, name='y_hat'), tf.identity(features, name='features')
+    return tf.identity(inputs, name='y_hat'), tf.identity(features, name='features'), tf.identity(upsample1, name='upsample1'), tf.identity(upsample2, name='upsample2')
 
 def one_hot(label, num_classes):
     vec = np.zeros(num_classes)
@@ -207,7 +209,7 @@ def build_graph_from_scratch():
         inputs = tf.placeholder(tf.float32, shape=(None, IMAGE_SIZE, IMAGE_SIZE, 3), name='inputs')
         y = tf.placeholder(tf.float32, [None, 1000], name='y') # 0-9 digits recognition => 10 classes
 
-        y_hat, features = darknet53(inputs, 'channels_first') 
+        y_hat, features, upsample1, upsample2 = darknet53(inputs, 'channels_first') 
 
         cost = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels=y, logits=y_hat), name='cost')
